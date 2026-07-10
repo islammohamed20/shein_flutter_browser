@@ -50,26 +50,51 @@ class BackgroundProductLoader extends ChangeNotifier {
   static const int maxBatch = 30;
 
   /// 1) قراءة روابط بطاقات المنتجات الظاهرة في صفحة الفئة (READ-ONLY)
+  /// يمرّر الصفحة أولاً لتحميل البطاقات الكسولة ثم يستخرج الروابط
   Future<List<String>> extractCardUrls(
     InAppWebViewController controller,
   ) async {
     try {
+      // تمرير الصفحة تدريجياً لتحميل البطاقات الكسولة (lazy load)
+      for (int i = 0; i < 3; i++) {
+        await controller.evaluateJavascript(
+          source: '''
+window.scrollBy(0, window.innerHeight * 0.8);
+''',
+        );
+        await Future.delayed(const Duration(milliseconds: 800));
+      }
+      // العودة للأعلى
+      await controller.evaluateJavascript(source: 'window.scrollTo(0, 0);');
+
       final result = await controller.evaluateJavascript(
         source: '''
 (function() {
   // قراءة فقط - لا تعديل على الصفحة
   var links = [];
   var seen = {};
-  // روابط بطاقات المنتجات في SHEIN
-  var anchors = document.querySelectorAll(
-    'a[href*="-p-"], a[href*="/product/"], a[href*="-p-"][class*="product"]'
-  );
+
+  // selectors موسعة لصيغ SHEIN الحديثة
+  var selectors = [
+    'a[href*="-p-"]',
+    'a[href*="/product/"]',
+    'a[href*="/goods?"]',
+    'a[href*="shein.com"][href*=".html"]',
+    '[data-href*="-p-"]',
+    '[data-goods-id] a',
+    '[data-product-id] a',
+    'a[class*="product"]',
+    'a[class*="goods"]',
+    'a[class*="card"]'
+  ];
+  var anchors = document.querySelectorAll(selectors.join(', '));
   anchors.forEach(function(a) {
-    var href = a.href || '';
+    var href = a.href || a.getAttribute('data-href') || '';
     // تأكد أنه رابط منتج تفصيلي
     var isProduct = (href.indexOf('-p-') > -1 && href.indexOf('.html') > -1) ||
-                    href.indexOf('/product/') > -1;
-    if (isProduct && !seen[href]) {
+                    href.indexOf('/product/') > -1 ||
+                    href.indexOf('/goods?') > -1;
+    if (isProduct && !seen[href] && href.indexOf('http') === 0) {
       seen[href] = true;
       links.push(href);
     }
@@ -107,7 +132,7 @@ class BackgroundProductLoader extends ChangeNotifier {
     if (urls.isEmpty) {
       _status = LoaderStatus.idle;
       notifyListeners();
-      return;
+      throw StateError('لم يتم العثور على روابط منتجات في الصفحة الحالية');
     }
 
     _queue
@@ -145,7 +170,7 @@ class BackgroundProductLoader extends ChangeNotifier {
         databaseEnabled: true,
         thirdPartyCookiesEnabled: true,
         cacheEnabled: true,
-        cacheMode: CacheMode.LOAD_CACHE_ELSE_NETWORK,
+        cacheMode: CacheMode.LOAD_NO_CACHE,
         mediaPlaybackRequiresUserGesture: true,
         // لا نحمّل الصور لتوفير الباندويدث - النص والـ APIs تكفي
         blockNetworkImage: false,

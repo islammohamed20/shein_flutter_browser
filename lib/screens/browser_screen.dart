@@ -925,15 +925,34 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   // ─── Background product scan ───
-  void _startBackgroundScan(BrowserTab activeTab, SettingsProvider sp) {
+  Future<void> _startBackgroundScan(
+    BrowserTab activeTab,
+    SettingsProvider sp,
+  ) async {
     final controller = activeTab.controller;
     if (controller == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('الصفحة غير جاهزة بعد')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('الصفحة غير جاهزة بعد')));
+      }
       return;
     }
-    BackgroundProductLoader().scanAndLoad(controller, sp.effectiveUserAgent);
+    try {
+      await BackgroundProductLoader().scanAndLoad(
+        controller,
+        sp.effectiveUserAgent,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('StateError: ', '')),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   // ─── Bottom Bar ───
