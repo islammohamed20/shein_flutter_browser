@@ -34,6 +34,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
   Timer? _spaUrlTimer;
 
+  /// تحديث حقل URL في AppBar دون انتظار rebuild
+  void _updateUrlBar(String url) {
+    if (mounted && _urlController.text != url) {
+      _urlController.text = url;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -46,8 +53,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
       if (activeTab?.controller == null) return;
       try {
         final currentUrl = await activeTab!.controller!.getUrl();
-        if (currentUrl != null && currentUrl.toString() != activeTab.url) {
-          activeTab.url = currentUrl.toString();
+        final urlString = currentUrl?.toString() ?? '';
+        if (urlString.isNotEmpty && urlString != activeTab.url) {
+          activeTab.url = urlString;
+          _updateUrlBar(urlString);
         }
       } catch (_) {}
     });
@@ -603,13 +612,17 @@ class _BrowserScreenState extends State<BrowserScreen> {
         tab.controller = controller;
       },
       onLoadStart: (controller, url) {
-        tab.url = url.toString();
+        final newUrl = url.toString();
+        tab.url = newUrl;
+        _updateUrlBar(newUrl);
         tab.isLoading = true;
         tab.loaded = false;
         // Note: anti-bot injection happens only on onLoadStop to avoid duplicates
       },
       onLoadStop: (controller, url) async {
-        tab.url = url.toString();
+        final newUrl = url.toString();
+        tab.url = newUrl;
+        _updateUrlBar(newUrl);
         tab.isLoading = false;
         tab.loaded = true;
         await tab.updateNavigationState();
@@ -651,10 +664,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
       },
       onUpdateVisitedHistory: (controller, url, androidIsReload) {
         if (url != null) {
+          final newUrl = url.toString();
           // تحديث URL التبويب دائماً — ضروري لتتبّع SPA
-          tab.url = url.toString();
+          tab.url = newUrl;
+          _updateUrlBar(newUrl);
           if (!tab.isIncognito) {
-            sp.addToHistory(tab.title, url.toString());
+            sp.addToHistory(tab.title, newUrl);
           }
         }
         // كشف المنتجات عند تنقّل SPA (تغيّر URL بدون onLoadStop)

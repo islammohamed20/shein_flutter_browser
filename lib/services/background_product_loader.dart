@@ -173,13 +173,19 @@ window.scrollBy(0, window.innerHeight * 0.8);
     InAppWebViewController controller,
     String userAgent,
   ) async {
-    if (isBusy) return;
+    if (isBusy) {
+      throw StateError(
+        'المسح قيد التشغيل بالفعل. انتظر انتهاء الدفعة الحالية أو أوقفها.',
+      );
+    }
     _cancelled = false;
     _status = LoaderStatus.scanning;
     notifyListeners();
 
     final currentUrl = (await controller.getUrl())?.toString() ?? 'غير معروف';
+    debugPrint('[BgLoader] Starting scan on: $currentUrl');
     final urls = await extractCardUrls(controller);
+    debugPrint('[BgLoader] Found ${urls.length} product URLs');
     if (urls.isEmpty) {
       _status = LoaderStatus.idle;
       notifyListeners();
@@ -212,6 +218,7 @@ window.scrollBy(0, window.innerHeight * 0.8);
     _processedUrls.add(url);
     _currentUrl = url;
     _currentTitle = '';
+    debugPrint('[BgLoader] Processing: $url');
     notifyListeners();
 
     final completer = Completer<void>();
