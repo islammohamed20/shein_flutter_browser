@@ -32,10 +32,25 @@ class _BrowserScreenState extends State<BrowserScreen> {
   // Tablet breakpoint
   static const double tabletBreakpoint = 600.0;
 
+  Timer? _spaUrlTimer;
+
   @override
   void initState() {
     super.initState();
     _deviceOptimizer.init();
+
+    // استطلاع دوري لالتقاط تغيّرات SPA التي لا تُطلق onLoadStop/onUpdateVisitedHistory
+    _spaUrlTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      final tabManager = context.read<TabManager>();
+      final activeTab = tabManager.activeTab;
+      if (activeTab?.controller == null) return;
+      try {
+        final currentUrl = await activeTab!.controller!.getUrl();
+        if (currentUrl != null && currentUrl.toString() != activeTab.url) {
+          activeTab.url = currentUrl.toString();
+        }
+      } catch (_) {}
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final tabManager = context.read<TabManager>();
@@ -54,6 +69,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   void dispose() {
     _urlController.dispose();
     _scrollDetectTimer?.cancel();
+    _spaUrlTimer?.cancel();
     super.dispose();
   }
 
@@ -634,8 +650,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
         }
       },
       onUpdateVisitedHistory: (controller, url, androidIsReload) {
-        if (url != null && !tab.isIncognito) {
-          sp.addToHistory(tab.title, url.toString());
+        if (url != null) {
+          // تحديث URL التبويب دائماً — ضروري لتتبّع SPA
+          tab.url = url.toString();
+          if (!tab.isIncognito) {
+            sp.addToHistory(tab.title, url.toString());
+          }
         }
         // كشف المنتجات عند تنقّل SPA (تغيّر URL بدون onLoadStop)
         if (url != null && _productDetector.isProductPage(url.toString())) {
@@ -945,10 +965,16 @@ class _BrowserScreenState extends State<BrowserScreen> {
       );
     } catch (e) {
       if (mounted) {
+        final msg = e.toString().replaceFirst('Bad state: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString().replaceFirst('StateError: ', '')),
-            duration: const Duration(seconds: 3),
+            content: Text(
+              msg,
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+            ),
+            duration: const Duration(seconds: 5),
           ),
         );
       }

@@ -70,35 +70,85 @@ window.scrollBy(0, window.innerHeight * 0.8);
       final result = await controller.evaluateJavascript(
         source: '''
 (function() {
-  // قراءة فقط - لا تعديل على الصفحة
+  function normalizeUrl(href) {
+    try {
+      if (!href || href.indexOf('http') !== 0) return '';
+      var u = new URL(href, window.location.href);
+      // احتفظ بالنطاق والمسار الأساسي فقط لمنتجات SHEIN
+      return u.href;
+    } catch (e) { return ''; }
+  }
+
+  function looksLikeProduct(href) {
+    if (!href) return false;
+    return (href.indexOf('-p-') > -1 && href.indexOf('.html') > -1) ||
+           href.indexOf('/product/') > -1 ||
+           href.indexOf('/goods?') > -1 ||
+           /\/p-\d+\.html/.test(href);
+  }
+
   var links = [];
   var seen = {};
 
-  // selectors موسعة لصيغ SHEIN الحديثة
+  // ── المرحلة 1: محاولة قراءة الحالة الأولية من المتغيرات العامة ──
+  try {
+    var initial = window.__INITIAL_STATE__ || window.__data || window._SSR_HYDRATED_DATA;
+    if (initial) {
+      var text = JSON.stringify(initial);
+      var matches = text.match(/https?:\\/\\/[^"'\\s]+\\/[^"'\\s]*-p-\\d+\\.html/g) || [];
+      matches.forEach(function(m) {
+        m = normalizeUrl(m);
+        if (m && !seen[m] && looksLikeProduct(m)) { seen[m] = true; links.push(m); }
+      });
+    }
+  } catch(e) {}
+
+  // ── المرحلة 2: selectors موسعة ──
   var selectors = [
     'a[href*="-p-"]',
     'a[href*="/product/"]',
     'a[href*="/goods?"]',
-    'a[href*="shein.com"][href*=".html"]',
+    'a[href*="shein"][href*=".html"]',
     '[data-href*="-p-"]',
+    '[data-href*=".html"]',
     '[data-goods-id] a',
     '[data-product-id] a',
+    '[data-spu] a',
     'a[class*="product"]',
     'a[class*="goods"]',
-    'a[class*="card"]'
+    'a[class*="card"]',
+    'a[class*="item"]'
   ];
-  var anchors = document.querySelectorAll(selectors.join(', '));
-  anchors.forEach(function(a) {
-    var href = a.href || a.getAttribute('data-href') || '';
-    // تأكد أنه رابط منتج تفصيلي
-    var isProduct = (href.indexOf('-p-') > -1 && href.indexOf('.html') > -1) ||
-                    href.indexOf('/product/') > -1 ||
-                    href.indexOf('/goods?') > -1;
-    if (isProduct && !seen[href] && href.indexOf('http') === 0) {
+  document.querySelectorAll(selectors.join(', ')).forEach(function(el) {
+    var href = el.href || el.getAttribute('data-href') || el.getAttribute('href') || '';
+    href = normalizeUrl(href);
+    if (href && !seen[href] && looksLikeProduct(href)) {
       seen[href] = true;
       links.push(href);
     }
   });
+
+  // ── المرحلة 3: fallback لجميع الروابط + الصور/العناصر التي تحمل data-src ──
+  if (links.length === 0) {
+    document.querySelectorAll('a[href], [data-href]').forEach(function(el) {
+      var href = el.href || el.getAttribute('data-href') || '';
+      href = normalizeUrl(href);
+      if (href && !seen[href] && looksLikeProduct(href)) {
+        seen[href] = true;
+        links.push(href);
+      }
+    });
+    // روابط قد تكون مدفونة في src للصور كبيرة الحجم
+    document.querySelectorAll('img[src*="-p-"], img[data-src*="-p-"]').forEach(function(img) {
+      var src = img.src || img.getAttribute('data-src') || '';
+      var match = src.match(/(https?:\\/\\/[^"'\\s]+-p-\\d+\\.html)/);
+      if (match) {
+        var href = normalizeUrl(match[1]);
+        if (href && !seen[href]) { seen[href] = true; links.push(href); }
+      }
+    });
+  }
+
   return JSON.stringify(links);
 })();
 ''',
@@ -128,11 +178,16 @@ window.scrollBy(0, window.innerHeight * 0.8);
     _status = LoaderStatus.scanning;
     notifyListeners();
 
+    final currentUrl = (await controller.getUrl())?.toString() ?? 'غير معروف';
     final urls = await extractCardUrls(controller);
     if (urls.isEmpty) {
       _status = LoaderStatus.idle;
       notifyListeners();
-      throw StateError('لم يتم العثور على روابط منتجات في الصفحة الحالية');
+      throw StateError(
+        'لم يُعثَر على روابط منتجات في هذه الصفحة.\n'
+        'تأكد أنك في صفحة فئة SHEIN (مثلاً: Dresses) وليس صفحة منتج واحد.\n'
+        'الرابط الحالي: $currentUrl',
+      );
     }
 
     _queue
