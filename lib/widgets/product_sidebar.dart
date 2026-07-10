@@ -57,6 +57,9 @@ class ProductDetector extends ChangeNotifier {
   ProductDetector._internal();
 
   final List<ProductInfo> _detectedProducts = [];
+  final Map<String, ProductInfo> _cache = {};
+  static const int maxProducts = 100;
+
   List<ProductInfo> get products => List.unmodifiable(_detectedProducts);
   int get count => _detectedProducts.length;
 
@@ -81,6 +84,19 @@ class ProductDetector extends ChangeNotifier {
     InAppWebViewController controller,
     String url,
   ) async {
+    // Return cached result if available
+    if (_cache.containsKey(url)) {
+      final cached = _cache[url]!;
+      final existingIdx = _detectedProducts.indexWhere((p) => p.url == url);
+      if (existingIdx >= 0) {
+        _detectedProducts[existingIdx] = cached;
+      } else {
+        _detectedProducts.insert(0, cached);
+      }
+      notifyListeners();
+      return cached;
+    }
+
     try {
       final result = await controller.evaluateJavascript(
         source: '''
@@ -119,14 +135,23 @@ class ProductDetector extends ChangeNotifier {
   
   // SKU - try multiple methods
   var sku = '';
-  var skuEl = document.querySelector('[class*="goods-sn"], [class*="product-sn"], [data-sku], [class*="sku"], [class*="item-id"]');
+  var skuEl = document.querySelector('[class*="goods-sn"], [class*="product-sn"], [data-sku], [data-goods-id], [class*="sku"], [class*="item-id"], [class*="spu"]');
   if (skuEl) {
-    sku = skuEl.getAttribute('data-sku') || skuEl.getAttribute('data-goods-sn') || skuEl.textContent.trim();
+    sku = skuEl.getAttribute('data-sku') || skuEl.getAttribute('data-goods-sn') || skuEl.getAttribute('data-goods-id') || skuEl.getAttribute('data-spu') || skuEl.textContent.trim();
   }
   // Try from URL
   if (!sku) {
     var urlMatch = window.location.href.match(/-p-(\\d+)\\.html/);
     if (urlMatch) sku = urlMatch[1];
+  }
+  // Try from canonical link
+  if (!sku) {
+    var canonical = document.querySelector('link[rel="canonical"]');
+    if (canonical) {
+      var cHref = canonical.getAttribute('href') || '';
+      var cMatch = cHref.match(/-p-(\\d+)\\.html/);
+      if (cMatch) sku = cMatch[1];
+    }
   }
   // Try from meta or JSON-LD
   if (!sku) {
@@ -159,6 +184,14 @@ class ProductDetector extends ChangeNotifier {
         images.push(src);
       }
     });
+  }
+  // Fallback: og:image meta tag
+  if (images.length === 0) {
+    var ogImg = document.querySelector('meta[property="og:image"]');
+    if (ogImg) {
+      var ogSrc = ogImg.getAttribute('content') || '';
+      if (ogSrc && ogSrc.indexOf('http') === 0) images.push(ogSrc);
+    }
   }
   
   // Description
@@ -261,6 +294,15 @@ class ProductDetector extends ChangeNotifier {
         _detectedProducts.insert(0, info);
       }
 
+      // Cache the result
+      _cache[url] = info;
+
+      // Enforce max products limit
+      if (_detectedProducts.length > maxProducts) {
+        final removed = _detectedProducts.removeLast();
+        _cache.remove(removed.url);
+      }
+
       notifyListeners();
       return info;
     } catch (e) {
@@ -271,6 +313,7 @@ class ProductDetector extends ChangeNotifier {
 
   void clear() {
     _detectedProducts.clear();
+    _cache.clear();
     notifyListeners();
   }
 }

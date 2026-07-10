@@ -1,15 +1,16 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 /// Device performance tier
 enum DeviceTier {
-  lowEnd,    // <= 2GB RAM, economic CPU
-  midRange,  // 3-4GB RAM
-  highEnd,   // 6GB+ RAM
+  lowEnd, // <= 2GB RAM, economic CPU
+  midRange, // 3-4GB RAM
+  highEnd, // 6GB+ RAM
 }
 
 /// Device performance optimizer for low-end hardware
-/// 
+///
 /// Detects device capabilities and adjusts:
 /// - Max tabs based on available RAM
 /// - Image loading quality
@@ -45,11 +46,53 @@ class DeviceOptimizer {
   }
 
   void _detectAndroidTier() {
-    _tier = DeviceTier.midRange;
+    // Estimate based on CPU cores and screen resolution
+    final cores = Platform.numberOfProcessors;
+    final pixelRatio =
+        WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+    final width = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .views
+        .first
+        .physicalSize
+        .width;
+    final height = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .views
+        .first
+        .physicalSize
+        .height;
+    final totalPixels = width * height;
+
+    // Heuristics:
+    // - <= 4 cores or very low resolution → lowEnd
+    // - 6-8 cores with mid resolution → midRange
+    // - 8+ cores with high resolution → highEnd
+    if (cores <= 4 || totalPixels < 720 * 1280) {
+      _tier = DeviceTier.lowEnd;
+    } else if (cores >= 8 && totalPixels >= 1080 * 2400) {
+      _tier = DeviceTier.highEnd;
+    } else {
+      _tier = DeviceTier.midRange;
+    }
+
+    debugPrint(
+      '[DeviceOptimizer] Android: cores=$cores, pixels=${width.toInt()}x${height.toInt()}, ratio=$pixelRatio → $_tier',
+    );
   }
 
   void _detectWindowsTier() {
-    _tier = DeviceTier.midRange;
+    final cores = Platform.numberOfProcessors;
+    if (cores >= 8) {
+      _tier = DeviceTier.highEnd;
+    } else if (cores >= 4) {
+      _tier = DeviceTier.midRange;
+    } else {
+      _tier = DeviceTier.lowEnd;
+    }
+    debugPrint('[DeviceOptimizer] Windows: cores=$cores → $_tier');
   }
 
   /// Set tier manually (from settings)
@@ -139,7 +182,7 @@ class DeviceOptimizer {
 
   List<String> get blockedResourcePatterns {
     if (!isLowEnd) return [];
-    
+
     return [
       '*.mp4',
       '*.webm',

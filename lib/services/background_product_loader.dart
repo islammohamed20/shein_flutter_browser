@@ -21,6 +21,7 @@ class BackgroundProductLoader extends ChangeNotifier {
 
   HeadlessInAppWebView? _headless;
   final Queue<String> _queue = Queue<String>();
+  final Set<String> _processedUrls = {};
   bool _cancelled = false;
 
   LoaderStatus _status = LoaderStatus.idle;
@@ -111,7 +112,7 @@ class BackgroundProductLoader extends ChangeNotifier {
 
     _queue
       ..clear()
-      ..addAll(urls.take(maxBatch));
+      ..addAll(urls.where((u) => !_processedUrls.contains(u)).take(maxBatch));
     _total = _queue.length;
     _processed = 0;
     _status = LoaderStatus.loading;
@@ -128,6 +129,7 @@ class BackgroundProductLoader extends ChangeNotifier {
     }
 
     final url = _queue.removeFirst();
+    _processedUrls.add(url);
     _currentUrl = url;
     _currentTitle = '';
     notifyListeners();
@@ -231,6 +233,7 @@ class BackgroundProductLoader extends ChangeNotifier {
     _currentUrl = null;
     _currentTitle = '';
     _secondsLeft = 0;
+    _processedUrls.clear();
     notifyListeners();
     // ارجع للوضع idle بعد لحظة
     await Future.delayed(const Duration(seconds: 1));
@@ -244,6 +247,7 @@ class BackgroundProductLoader extends ChangeNotifier {
   Future<void> cancel() async {
     _cancelled = true;
     _queue.clear();
+    _processedUrls.clear();
     await _disposeHeadless();
     _status = LoaderStatus.idle;
     _currentUrl = null;
@@ -253,8 +257,12 @@ class BackgroundProductLoader extends ChangeNotifier {
 
   @override
   void dispose() {
+    _cancelled = true;
     _countdownTimer?.cancel();
-    _headless?.dispose();
+    _queue.clear();
+    _processedUrls.clear();
+    _headless?.dispose().catchError((_) {});
+    _headless = null;
     super.dispose();
   }
 }

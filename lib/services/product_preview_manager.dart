@@ -54,6 +54,7 @@ class ProductPreviewManager extends ChangeNotifier {
 
   /// روابط تمت معالجتها (لتجنب إعادة فتح نفس المنتج)
   final Set<String> _processedUrls = {};
+  static const int maxProcessedUrls = 200;
 
   bool _autoDetectEnabled = false;
   bool get autoDetectEnabled => _autoDetectEnabled;
@@ -190,6 +191,11 @@ class ProductPreviewManager extends ChangeNotifier {
 
     _processedUrls.add(url);
     _processingUrls.remove(url);
+
+    // Prevent unbounded growth
+    if (_processedUrls.length > maxProcessedUrls) {
+      _processedUrls.remove(_processedUrls.first);
+    }
 
     // أزل المعاينة بعد انتهاء الوقت
     debugPrint('[PreviewManager] 🗑️ Removing: $url');
