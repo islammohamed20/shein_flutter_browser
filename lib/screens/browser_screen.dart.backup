@@ -1,0 +1,420 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../providers/settings_provider.dart';
+import 'settings_screen.dart';
+
+class BrowserScreen extends StatefulWidget {
+  const BrowserScreen({super.key});
+
+  @override
+  State<BrowserScreen> createState() => _BrowserScreenState();
+}
+
+class _BrowserScreenState extends State<BrowserScreen> {
+  InAppWebViewController? _webController;
+  bool _isLoading = true;
+  double _progress = 0;
+  String _currentUrl = '';
+  bool _canGoBack = false;
+  bool _canGoForward = false;
+
+  @override
+  void dispose() {
+    _webController = null;
+    super.dispose();
+  }
+
+  void _reloadSettings() {
+    final sp = context.read<SettingsProvider>();
+    _webController?.setSettings(
+      settings: InAppWebViewSettings(
+        javaScriptEnabled: sp.jsEnabled,
+        userAgent: sp.effectiveUserAgent,
+      ),
+    );
+    _webController?.reload();
+  }
+
+  Future<void> _updateNavState() async {
+    if (!mounted || _webController == null) return;
+    final back = await _webController!.canGoBack();
+    final fwd = await _webController!.canGoForward();
+    setState(() {
+      _canGoBack = back;
+      _canGoForward = fwd;
+    });
+  }
+
+  void _showRegionPicker(BuildContext context, SettingsProvider sp) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: const Text(
+                'اختر موقع SHEIN',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: SettingsProvider.regions.length,
+                itemBuilder: (_, i) {
+                  final entry = SettingsProvider.regions.entries.elementAt(i);
+                  final selected = entry.value == sp.region;
+                  return ListTile(
+                    title: Text(
+                      entry.key,
+                      style: TextStyle(
+                        fontWeight: selected
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: selected ? const Color(0xFFFF69B4) : null,
+                      ),
+                    ),
+                    trailing: selected
+                        ? const Icon(Icons.check, color: Color(0xFFFF69B4))
+                        : null,
+                    onTap: () {
+                      sp.setRegion(entry.value);
+                      _webController?.loadUrl(
+                        urlRequest: URLRequest(url: WebUri(entry.value)),
+                      );
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sp = context.watch<SettingsProvider>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      appBar: AppBar(
+        elevation: 0,
+        titleSpacing: 8,
+        title: Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF2A2A3E)
+                      : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 12),
+                    Icon(
+                      Icons.lock_outline,
+                      size: 14,
+                      color: _currentUrl.startsWith('https')
+                          ? Colors.green
+                          : Colors.grey,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _currentUrl.isEmpty ? sp.region : _currentUrl,
+                        style: const TextStyle(fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'الإعدادات',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ).then((_) => _reloadSettings()),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth > 700;
+
+          final webView = InAppWebView(
+            initialUrlRequest: URLRequest(url: WebUri(sp.region)),
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: sp.jsEnabled,
+              userAgent: sp.effectiveUserAgent,
+              useShouldOverrideUrlLoading: false,
+              mediaPlaybackRequiresUserGesture: false,
+              allowsInlineMediaPlayback: true,
+            ),
+            onWebViewCreated: (controller) {
+              _webController = controller;
+            },
+            onLoadStart: (controller, url) {
+              setState(() {
+                _isLoading = true;
+                _currentUrl = url.toString();
+              });
+            },
+            onLoadStop: (controller, url) async {
+              setState(() {
+                _isLoading = false;
+                _currentUrl = url.toString();
+              });
+              _updateNavState();
+            },
+            onProgressChanged: (controller, progress) {
+              setState(() {
+                _progress = progress / 100;
+              });
+            },
+            onConsoleMessage: (controller, consoleMessage) {
+              debugPrint('JS Console: ${consoleMessage.message}');
+            },
+            onReceivedError: (controller, request, error) {
+              debugPrint('WebView error: ${error.description}');
+              setState(() {
+                _isLoading = false;
+              });
+            },
+          );
+
+          final progressBar = LinearProgressIndicator(
+            value: _isLoading ? _progress : 0,
+            minHeight: 2,
+            backgroundColor: Colors.transparent,
+            valueColor: const AlwaysStoppedAnimation(Color(0xFFFF69B4)),
+          );
+
+          final bottomBar = _buildBottomBar(isDark);
+
+          if (isWide) {
+            return Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      progressBar,
+                      Expanded(child: webView),
+                      bottomBar,
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 280,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(
+                        color: isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade300,
+                      ),
+                    ),
+                  ),
+                  child: _buildTabletSidebar(sp, isDark),
+                ),
+              ],
+            );
+          }
+
+          return Column(
+            children: [
+              progressBar,
+              Expanded(child: webView),
+              bottomBar,
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBottomBar(bool isDark) {
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _navButton(
+              Icons.arrow_back_ios_rounded,
+              _canGoBack,
+              () => _webController?.goBack(),
+            ),
+            _navButton(
+              Icons.arrow_forward_ios_rounded,
+              _canGoForward,
+              () => _webController?.goForward(),
+            ),
+            _navButton(Icons.refresh_rounded, true, () {
+              setState(() => _isLoading = true);
+              _webController?.reload();
+            }),
+            _navButton(Icons.home_rounded, true, () {
+              final url = context.read<SettingsProvider>().region;
+              _webController?.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+            }),
+            _navButton(Icons.stop_circle_outlined, _isLoading, () {
+              _webController?.stopLoading();
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _navButton(IconData icon, bool enabled, VoidCallback onTap) {
+    return IconButton(
+      icon: Icon(icon, size: 22),
+      color: enabled ? Theme.of(context).iconTheme.color : Colors.grey,
+      onPressed: enabled ? onTap : null,
+      splashRadius: 24,
+    );
+  }
+
+  Widget _buildTabletSidebar(SettingsProvider sp, bool isDark) {
+    return SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                ),
+              ),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.shopping_bag,
+                  size: 40,
+                  color: Color(0xFFFF69B4),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'SHEIN Browser',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  SettingsProvider.regions.entries
+                      .firstWhere(
+                        (e) => e.value == sp.region,
+                        orElse: () => const MapEntry('SHEIN', ''),
+                      )
+                      .key,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.language, size: 20),
+                  title: const Text('الموقع', style: TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    SettingsProvider.regions.entries
+                        .firstWhere(
+                          (e) => e.value == sp.region,
+                          orElse: () => const MapEntry('', ''),
+                        )
+                        .key,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  onTap: () => _showRegionPicker(context, sp),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.palette_outlined, size: 20),
+                  title: const Text('المظهر', style: TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    sp.theme == AppTheme.light
+                        ? 'فاتح'
+                        : sp.theme == AppTheme.dark
+                        ? 'داكن'
+                        : 'حسب النظام',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  ).then((_) => _reloadSettings()),
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.delete_outline,
+                    size: 20,
+                    color: Colors.redAccent,
+                  ),
+                  title: const Text(
+                    'مسح الكاش',
+                    style: TextStyle(fontSize: 14, color: Colors.redAccent),
+                  ),
+                  onTap: () async {
+                    await InAppWebViewController.clearAllCache();
+                    await _webController?.reload();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم مسح الكاش وإعادة التحميل'),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.info_outline, size: 20),
+                  title: const Text('حول', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text(
+                    'v1.0.0',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
