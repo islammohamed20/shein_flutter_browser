@@ -125,7 +125,7 @@ class ProductDetector extends ChangeNotifier {
   }
   // Try from URL
   if (!sku) {
-    var urlMatch = url.match(/-p-(d+).html/);
+    var urlMatch = window.location.href.match(/-p-(\\d+)\\.html/);
     if (urlMatch) sku = urlMatch[1];
   }
   // Try from meta or JSON-LD

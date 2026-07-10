@@ -637,6 +637,14 @@ class _BrowserScreenState extends State<BrowserScreen> {
         if (url != null && !tab.isIncognito) {
           sp.addToHistory(tab.title, url.toString());
         }
+        // كشف المنتجات عند تنقّل SPA (تغيّر URL بدون onLoadStop)
+        if (url != null && _productDetector.isProductPage(url.toString())) {
+          Future.delayed(const Duration(milliseconds: 1500), () {
+            if (mounted && tab.controller != null) {
+              _productDetector.extractFromPage(controller, url.toString());
+            }
+          });
+        }
       },
       onScrollChanged: (controller, x, y) {
         // Trigger auto-detection on scroll if enabled
