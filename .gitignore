@@ -53,3 +53,4 @@ app.*.map.json
 
 # Flutter reference project (not part of the app)
 /flutter_browser_app_reference/
+tablet_logs.txt
