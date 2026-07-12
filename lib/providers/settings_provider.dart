@@ -282,6 +282,27 @@ class SettingsProvider extends ChangeNotifier {
   String get effectiveUserAgent =>
       _customUa?.trim().isNotEmpty == true ? _customUa! : defaultUserAgent;
 
+  /// UA بناءً على وضع معيّن (موبايل/ديسكتوب) مع احترام UA المخصّص
+  String userAgentFor(bool desktopMode) {
+    if (_customUa?.trim().isNotEmpty == true) return _customUa!;
+    return desktopMode ? _desktopUa : _mobileUa;
+  }
+
+  /// تحويل الرابط بين نطاق الموبايل (m.shein.com) ونطاق الديسكتوب الخاص بالمنطقة
+  String adaptUrlForMode(String url, bool desktopMode) {
+    if (url.isEmpty || url == 'about:blank') return url;
+    final desktopHost = Uri.tryParse(region)?.host;
+    if (desktopHost == null || desktopHost.isEmpty) return url;
+
+    if (desktopMode) {
+      if (url.contains(desktopHost)) return url;
+      return url.replaceFirst('m.shein.com', desktopHost);
+    } else {
+      if (url.contains('m.shein.com')) return url;
+      return url.replaceFirst(desktopHost, 'm.shein.com');
+    }
+  }
+
   // ─── Ad Block Script ───
   String get adBlockScript => '''
 (function() {

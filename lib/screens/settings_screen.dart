@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
+import '../services/tab_manager.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -160,7 +162,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         : 'يتم عرض نسخة الهاتف',
                   ),
                   value: sp.desktopMode,
-                  onChanged: (v) => sp.setDesktopMode(v),
+                  onChanged: (v) async {
+                    await sp.setDesktopMode(v);
+                    // تطبيق التغيير على التبويب النشط فوراً
+                    final tabManager = context.read<TabManager>();
+                    final activeTab = tabManager.activeTab;
+                    final controller = activeTab?.controller;
+                    if (controller != null && activeTab != null) {
+                      await controller.setSettings(
+                        settings: InAppWebViewSettings(
+                          userAgent: sp.userAgentFor(v),
+                          useWideViewPort: v,
+                        ),
+                      );
+                      final newUrl = sp.adaptUrlForMode(activeTab.url, v);
+                      if (newUrl != activeTab.url) {
+                        activeTab.url = newUrl;
+                        await controller.loadUrl(
+                          urlRequest: URLRequest(url: WebUri(newUrl)),
+                        );
+                      } else {
+                        await controller.reload();
+                      }
+                    }
+                  },
                   activeColor: const Color(0xFFFF69B4),
                   secondary: Icon(
                     sp.desktopMode

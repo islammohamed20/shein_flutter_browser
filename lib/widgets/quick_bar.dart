@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../providers/settings_provider.dart';
@@ -269,7 +270,7 @@ class _QuickBarButton extends StatelessWidget {
     }
   }
 
-  void _execute(BuildContext context) {
+  Future<void> _execute(BuildContext context) async {
     switch (item.action) {
       case QuickBarAction.back:
         activeTab.goBack();
@@ -285,7 +286,29 @@ class _QuickBarButton extends StatelessWidget {
         tabManager.closeTab(activeTab.id);
       case QuickBarAction.toggleDesktop:
         activeTab.isDesktopMode = !activeTab.isDesktopMode;
-        activeTab.reload();
+        final controller = activeTab.controller;
+        if (controller != null) {
+          await controller.setSettings(
+            settings: InAppWebViewSettings(
+              userAgent: sp.userAgentFor(activeTab.isDesktopMode),
+              useWideViewPort: activeTab.isDesktopMode,
+            ),
+          );
+          final newUrl = sp.adaptUrlForMode(
+            activeTab.url,
+            activeTab.isDesktopMode,
+          );
+          if (newUrl != activeTab.url) {
+            activeTab.url = newUrl;
+            await controller.loadUrl(
+              urlRequest: URLRequest(url: WebUri(newUrl)),
+            );
+          } else {
+            await activeTab.reload();
+          }
+        } else {
+          activeTab.reload();
+        }
       case QuickBarAction.bookmark:
         sp.toggleBookmark(activeTab.title, activeTab.url);
       case QuickBarAction.products:

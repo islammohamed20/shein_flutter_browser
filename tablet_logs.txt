@@ -1,0 +1,6 @@
+--------- beginning of main
+--------- beginning of system
+07-10 19:18:26.759 11156 11156 I flutter : JS [Women | New Collection Online | SHEIN]: Error
+07-10 19:18:32.225 11156 11156 I flutter : JS [Women | New Collection Online | SHEIN]: Pinterest Tag Error: 'load' command was called multiple times.  Previously for tag id '%s', now for tag id '%s'. 2612895378809 2614427147260
+07-10 19:18:32.229 11156 11156 I flutter : JS [Women | New Collection Online | SHEIN]: Pinterest Tag Error: 'load' command was called multiple times.  Previously for tag id '%s', now for tag id '%s'. 2614427147260 2612989084426
+07-10 19:18:33.079 11156 11156 I flutter : JS [Women | New Collection Online | SHEIN]: Error
