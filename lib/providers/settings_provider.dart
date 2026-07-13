@@ -291,15 +291,36 @@ class SettingsProvider extends ChangeNotifier {
   /// تحويل الرابط بين نطاق الموبايل (m.shein.com) ونطاق الديسكتوب الخاص بالمنطقة
   String adaptUrlForMode(String url, bool desktopMode) {
     if (url.isEmpty || url == 'about:blank') return url;
-    final desktopHost = Uri.tryParse(region)?.host;
+
+    // إذا كان region = m.shein.com، استخدم ar.shein.com كافتراضي للديسكتوب
+    var targetRegion = region;
+    final regionHost = Uri.tryParse(targetRegion)?.host;
+    if (regionHost == 'm.shein.com') {
+      targetRegion = 'https://ar.shein.com';
+      debugPrint('[adaptUrlForMode] Region is m.shein.com, using ar.shein.com');
+    }
+
+    final desktopHost = Uri.tryParse(targetRegion)?.host;
     if (desktopHost == null || desktopHost.isEmpty) return url;
 
     if (desktopMode) {
-      if (url.contains(desktopHost)) return url;
-      return url.replaceFirst('m.shein.com', desktopHost);
+      // تحويل من موبايل إلى ديسكتوب
+      if (url.contains('m.shein.com')) {
+        final result = url.replaceFirst('m.shein.com', desktopHost);
+        debugPrint('[adaptUrlForMode] Desktop: $url -> $result');
+        return result;
+      }
+      return url;
     } else {
+      // تحويل من ديسكتوب إلى موبايل
       if (url.contains('m.shein.com')) return url;
-      return url.replaceFirst(desktopHost, 'm.shein.com');
+      // استبدل أي نطاق shein بـ m.shein.com
+      final result = url.replaceFirst(
+        RegExp(r'[a-z]{2,3}\.shein\.com|www\.shein\.com'),
+        'm.shein.com',
+      );
+      debugPrint('[adaptUrlForMode] Mobile: $url -> $result');
+      return result;
     }
   }
 

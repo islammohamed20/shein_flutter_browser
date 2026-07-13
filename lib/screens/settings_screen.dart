@@ -163,12 +163,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   value: sp.desktopMode,
                   onChanged: (v) async {
+                    debugPrint('[Settings] Desktop mode changed to: $v');
                     await sp.setDesktopMode(v);
                     // تطبيق التغيير على التبويب النشط فوراً
                     final tabManager = context.read<TabManager>();
                     final activeTab = tabManager.activeTab;
                     final controller = activeTab?.controller;
                     if (controller != null && activeTab != null) {
+                      debugPrint(
+                        '[Settings] Applying to tab: ${activeTab.url}',
+                      );
                       await controller.setSettings(
                         settings: InAppWebViewSettings(
                           userAgent: sp.userAgentFor(v),
@@ -176,6 +180,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       );
                       final newUrl = sp.adaptUrlForMode(activeTab.url, v);
+                      debugPrint(
+                        '[Settings] URL adapted: ${activeTab.url} -> $newUrl',
+                      );
                       if (newUrl != activeTab.url) {
                         activeTab.url = newUrl;
                         await controller.loadUrl(

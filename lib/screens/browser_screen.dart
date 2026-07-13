@@ -64,18 +64,26 @@ class _BrowserScreenState extends State<BrowserScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final tabManager = context.read<TabManager>();
       final sp = context.read<SettingsProvider>();
+      debugPrint(
+        '[BrowserScreen] Desktop mode: ${sp.desktopMode}, Region: ${sp.region}',
+      );
       if (tabManager.isEmpty) {
         // Try to restore previous session
         await tabManager.restoreSession();
         if (tabManager.isEmpty) {
           // إنشاء تبويب جديد مع تطبيق وضع سطح المكتب على الرابط
           final startUrl = sp.adaptUrlForMode(sp.region, sp.desktopMode);
+          debugPrint('[BrowserScreen] Creating new tab with URL: $startUrl');
           tabManager.createTab(url: startUrl);
         } else {
           // تطبيق وضع سطح المكتب على التبويبات المستعادة
+          debugPrint(
+            '[BrowserScreen] Restoring ${tabManager.tabs.length} tabs',
+          );
           for (final tab in tabManager.tabs) {
             tab.isDesktopMode = sp.desktopMode;
             final adapted = sp.adaptUrlForMode(tab.url, sp.desktopMode);
+            debugPrint('[BrowserScreen] Tab ${tab.id}: ${tab.url} -> $adapted');
             if (adapted != tab.url) {
               tab.url = adapted;
             }
