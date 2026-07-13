@@ -63,12 +63,23 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final tabManager = context.read<TabManager>();
+      final sp = context.read<SettingsProvider>();
       if (tabManager.isEmpty) {
         // Try to restore previous session
         await tabManager.restoreSession();
         if (tabManager.isEmpty) {
-          final sp = context.read<SettingsProvider>();
-          tabManager.createTab(url: sp.region);
+          // إنشاء تبويب جديد مع تطبيق وضع سطح المكتب على الرابط
+          final startUrl = sp.adaptUrlForMode(sp.region, sp.desktopMode);
+          tabManager.createTab(url: startUrl);
+        } else {
+          // تطبيق وضع سطح المكتب على التبويبات المستعادة
+          for (final tab in tabManager.tabs) {
+            tab.isDesktopMode = sp.desktopMode;
+            final adapted = sp.adaptUrlForMode(tab.url, sp.desktopMode);
+            if (adapted != tab.url) {
+              tab.url = adapted;
+            }
+          }
         }
       }
     });
@@ -563,7 +574,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
       initialSettings: InAppWebViewSettings(
         // Core settings
         javaScriptEnabled: sp.jsEnabled,
-        userAgent: sp.effectiveUserAgent,
+        userAgent: sp.userAgentFor(tab.isDesktopMode || sp.desktopMode),
 
         // Allow mixed content (HTTP in HTTPS) - important for SHEIN
         mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
@@ -585,7 +596,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
         blockNetworkImage: false,
 
         // Viewport settings
-        useWideViewPort: tab.isDesktopMode,
+        useWideViewPort: tab.isDesktopMode || sp.desktopMode,
         loadWithOverviewMode: true,
         supportZoom: true,
         builtInZoomControls: true,
